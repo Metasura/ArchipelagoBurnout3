@@ -1,18 +1,28 @@
 import asyncio
+import os
 import sys
 import threading
 import time
 from asyncio import run_coroutine_threadsafe
+
+if __package__ in (None, ""):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    from worlds.burnout3.items import ALL_ITEMS_BY_ID
+    from worlds.burnout3.locations import ALL_MEDALS_LIST, ALL_OTHERS_LIST, ALL_RACE_LIST, ALL_CRASH_LIST
+else:
+    from .items import ALL_ITEMS_BY_ID
+    from .locations import ALL_MEDALS_LIST, ALL_OTHERS_LIST, ALL_RACE_LIST, ALL_CRASH_LIST
+
 from Utils import  init_logging
 from CommonClient import CommonContext, server_loop, gui_enabled, ClientCommandProcessor, logger, get_base_parser
 
 try:
-    from pine import Pine
+    if __package__ in (None, ""):
+        from pine import Pine
+    else:
+        from .pine import Pine
 except ImportError:
     logger.error("PINE missing."); sys.exit(1)
-
-from items import ALL_ITEMS_BY_ID
-from locations import ALL_MEDALS_LIST, ALL_OTHERS_LIST, ALL_RACE_LIST, ALL_CRASH_LIST 
 
 ALL_GOLD_IDS = {event.ap_id * 10 + 3 for event in ALL_MEDALS_LIST}
 ALL_RACE_GOLD_IDS = {event.ap_id * 10 + 3 for event in ALL_RACE_LIST}
@@ -408,6 +418,7 @@ def main(connect=None, password=None):
         pass
     except Exception as e:
         print(f"Fatal Error : {e}")
+
         input("Press Enter to continue ...")
 
 if __name__ == '__main__':
