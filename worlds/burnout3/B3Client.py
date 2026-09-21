@@ -388,15 +388,21 @@ async def async_main(args):
         ctx.username = args.username
     
     ctx.loop = asyncio.get_running_loop()
-    pine_thread = threading.Thread(target=pine_thread_loop, args=(ctx,), daemon=True)
-    pine_thread.start()
 
     if gui_enabled:
         ctx.run_gui()
+        await asyncio.sleep(0)
         logger.info("GUI Launched")
-        await ctx.ui_task 
     else:
+        pine_thread = threading.Thread(target=pine_thread_loop, args=(ctx,), daemon=True)
+        pine_thread.start()
         await ctx.server_task
+
+    if gui_enabled:
+        pine_thread = threading.Thread(target=pine_thread_loop, args=(ctx,), daemon=True)
+        pine_thread.start()
+        await ctx.ui_task
+
     ctx.keep_running = False
 
 def main(connect=None, password=None):
