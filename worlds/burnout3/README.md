@@ -1,0 +1,35 @@
+# Burnout 3 Archipelago
+Archipelago for Burnout 3 Takedown
+
+## ⚠️ WARNING
+- You need a PS2 Burnout 3 US ISO (`SLUS-21050`).
+- You need PCSX2 Lastest Stable (`v2.6.3`). (Nightly might not work for some reason).
+- After each Race or Crash go back to the main menu (If you don't you might see location that you don't have/don't see ones you do).
+
+## PCSX2 Settings
+- Enable PINE in PCSX2
+  - In PCSX2, Under Tools, **Check** Show Advanced Settings.
+  - In PCSX2, System ---> Settings ---> Advanced tab ---> PINE Settings, **Check** Enable and ensure Slot is set to 28011.
+- Download the latest pnach file from release
+  - Launch the game a first time.
+  - In PCSX2, Under Tools, Click on Edit Patch.
+  - A text editor should pop up paste the content of the pnach file inside and save.
+  - Close the game and launch it again a popup will show that a patch as been loaded.
+
+## YAML Options
+- Otherwise you will start with a random Race + Car + Crash in All Mode, 2 Random Races (1 Normal and 1 Special (GP Excluded)) + 1 Car in Race Mode or 2 Random Crashs in Crash Mode.
+- You can choose how many Medal you need to complete the game.
+- You can choose which medal is needed to win (Gold, Silver or Bronze).
+- You can choose the number of generated events.
+- All Mode : You need x Gold Medal up to 173.
+- Race Mode : You need x Gold Medal up to 73 .
+- Crash Mode : You need x Gold Medal up to 100.
+- You can enable the Signature Takedowns (20) (Only in All Mode or Race Mode).
+- You can enable the Crash Headline (10) (Only in All Mode or Crash Mode).
+- You can enable Deathlink (Requires the pnach file to work).
+- Trophies coming soon.
+    
+## Known Issue
+ - In Race Mode (and probably All Mode) the car can rarely be replaced by a filler item (Bonus Point), game should still be beatable.
+ - The game will not generate if you select too few events when solo playing.
+-The pnach file causes some issues on Linux systems.
