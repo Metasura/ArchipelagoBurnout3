@@ -8,10 +8,10 @@ from asyncio import run_coroutine_threadsafe
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     from worlds.burnout3.items import ALL_ITEMS_BY_ID
-    from worlds.burnout3.locations import ALL_MEDALS_LIST, ALL_OTHERS_LIST, ALL_RACE_LIST, ALL_CRASH_LIST
+    from worlds.burnout3.locations import ALL_MEDALS_LIST, ALL_OTHERS_LIST, ALL_RACE_LIST, ALL_CRASH_LIST, medal_events_for_type
 else:
     from .items import ALL_ITEMS_BY_ID
-    from .locations import ALL_MEDALS_LIST, ALL_OTHERS_LIST, ALL_RACE_LIST, ALL_CRASH_LIST
+    from .locations import ALL_MEDALS_LIST, ALL_OTHERS_LIST, ALL_RACE_LIST, ALL_CRASH_LIST, medal_events_for_type
 
 from Utils import  init_logging
 from CommonClient import CommonContext, server_loop, gui_enabled, ClientCommandProcessor, logger, get_base_parser
@@ -27,10 +27,15 @@ except ImportError:
 ALL_GOLD_IDS = {event.ap_id * 10 + 3 for event in ALL_MEDALS_LIST}
 ALL_RACE_GOLD_IDS = {event.ap_id * 10 + 3 for event in ALL_RACE_LIST}
 ALL_CRASH_GOLD_IDS = {event.ap_id * 10 + 3 for event in ALL_CRASH_LIST}
+EXPECTED_GAME_ID = "SLUS-21050"
+MEDAL_MEMORY_SIGNATURE = (0x0051BE86, 0x0051BE8F, 0x0051BE92)
+VALID_MEDAL_VALUES = {0x00, 0x01, 0x02, 0x03, 0xFF}
 
 VAL_UNLOCKED = 0x01
 VAL_LOCKED = 0x00
 VAL_BRONZE, VAL_SILVER, VAL_GOLD = 0x01, 0x02, 0x03
+CURRENT_EVENT_ADDRESS = 0x01E901C8
+CRASH_STATE_ADDRESS = 0x0064EC9A
 
 class BT3CommandProcessor(ClientCommandProcessor):
     def _cmd_showmedals(self):
@@ -93,6 +98,7 @@ class PS2Context(CommonContext):
         self.connected_to_pcsx2 = False
         self.keep_running = True
         self.last_deathlink = 0
+        self.pcsx2_game_id = None
         self.required_golds = 173
         self.gamemode = 0
         self.medal_type = 2
@@ -115,6 +121,7 @@ class PS2Context(CommonContext):
                     source_list = ALL_MEDALS_LIST
                     if self.gamemode == 1: source_list = ALL_RACE_LIST
                     elif self.gamemode == 2: source_list = ALL_CRASH_LIST
+                    source_list = medal_events_for_type(source_list, self.medal_type)
 
                     self.victory_ids = {event.ap_id * 10 + offset for event in source_list}
 
@@ -205,7 +212,7 @@ def update_dynamic_values(ctx: PS2Context):
         medal_names = ["BRONZE", "SILVER", "GOLD"] 
         current_medal_idx = getattr(ctx, 'medal_type', 2) 
         val_medal = medal_names[current_medal_idx] if current_medal_idx < len(medal_names) else "GOLD"
-        mode_value = getattr(ctx, 'gameplay_mode', 0)
+        mode_value = getattr(ctx, 'gamemode', 0)
         
         if mode_value == 1:
             gamemode = 'RACE'
@@ -232,19 +239,39 @@ def update_dynamic_values(ctx: PS2Context):
         pass     
 
 def try_connect_pine(ctx: PS2Context):
-    if not ctx.connected_to_pcsx2:
-        try:
-            ctx.pine.read_int8(0x0051BFF7)
-            if not ctx.connected_to_pcsx2:
-                logger.info("[PINE] Connected to PCSX2 !")
-                ctx.connected_to_pcsx2 = True
-            return True
-        except Exception:
-            if ctx.connected_to_pcsx2:
-                logger.warning("[PINE] Connexion lost...")
-                ctx.connected_to_pcsx2 = False
+    try:
+        game_id = ctx.pine.get_game_id().strip().upper().replace("_", "-")
+        if game_id != EXPECTED_GAME_ID:
+            if ctx.pcsx2_game_id != game_id:
+                logger.error(
+                    f"[PINE] Wrong game loaded: {game_id or 'unknown'}. "
+                    f"Expected Burnout 3 ({EXPECTED_GAME_ID}); medal checks disabled."
+                )
+            ctx.pcsx2_game_id = game_id
+            ctx.connected_to_pcsx2 = False
             return False
-    return True
+
+        signature = tuple(ctx.pine.read_int8(address) for address in MEDAL_MEMORY_SIGNATURE)
+        if any(value not in VALID_MEDAL_VALUES for value in signature):
+            if ctx.pcsx2_game_id != game_id:
+                logger.error(
+                    "[PINE] Burnout 3 memory signature did not match. "
+                    "The full game is required; medal checks disabled."
+                )
+            ctx.pcsx2_game_id = game_id
+            ctx.connected_to_pcsx2 = False
+            return False
+
+        ctx.pcsx2_game_id = game_id
+        if not ctx.connected_to_pcsx2:
+            logger.info("[PINE] Connected to PCSX2 !")
+            ctx.connected_to_pcsx2 = True
+        return True
+    except Exception:
+        if ctx.connected_to_pcsx2:
+            logger.warning("[PINE] Connexion lost...")
+            ctx.connected_to_pcsx2 = False
+        return False
 
 def check_locations(ctx, loop_count):
     if loop_count % 3 != 0: return
@@ -257,10 +284,10 @@ def check_locations(ctx, loop_count):
         loc_bronze = event.ap_id * 10 + 1
         loc_silver = event.ap_id * 10 + 2
         loc_gold   = event.ap_id * 10 + 3
-        if medal_val >= VAL_BRONZE and loc_bronze not in ctx.locations_checked:
+        if "Face-Off" not in event.name and medal_val >= VAL_BRONZE and loc_bronze not in ctx.locations_checked:
             new_checks.append(loc_bronze); 
             
-        if medal_val >= VAL_SILVER and loc_silver not in ctx.locations_checked:
+        if "Face-Off" not in event.name and medal_val >= VAL_SILVER and loc_silver not in ctx.locations_checked:
             new_checks.append(loc_silver); 
             
         if medal_val >= VAL_GOLD and loc_gold not in ctx.locations_checked:
@@ -320,33 +347,45 @@ def check_victory(ctx):
         ctx.finished_game = True
 
 
+def current_event_is_crash(ctx: PS2Context):
+    if ctx.gamemode == 1:
+        return False
+    if ctx.gamemode == 2:
+        return True
+
+    event_index = ctx.pine.read_int32(CURRENT_EVENT_ADDRESS)
+    if 0 <= event_index < len(ALL_MEDALS_LIST):
+        return event_index >= len(ALL_RACE_LIST)
+    return None
+
+
 def check_death(ctx: PS2Context):
     if not getattr(ctx, "death_link_enabled", False):
         return
-        
+
     try:
-        is_crashing = ctx.pine.read_int8(0x0064EC9A) 
+        is_crashing = ctx.pine.read_int8(CRASH_STATE_ADDRESS)
     except Exception:
         return
 
+    event_is_crash = current_event_is_crash(ctx)
     if is_crashing == 1 and getattr(ctx, "last_crash_state", 0) == 0:
-        
-        current_time = time.time()
-        if current_time - getattr(ctx, "last_deathlink_time", 0) > 5.0:
-            
-            message = {
-                "time": current_time,
-                "cause": "crashed.",
-                "source": ctx.username,
-            }
-            
-            from asyncio import run_coroutine_threadsafe
-            run_coroutine_threadsafe(
-                ctx.send_msgs([{"cmd": "Bounce", "tags": ["DeathLink"], "data": message}]),
-                ctx.loop
-            )
-            
-            ctx.last_deathlink_time = current_time
+        if event_is_crash is False:
+            current_time = time.time()
+            if current_time - getattr(ctx, "last_deathlink_time", 0) > 5.0:
+                message = {
+                    "time": current_time,
+                    "cause": "crashed.",
+                    "source": ctx.username,
+                }
+
+                from asyncio import run_coroutine_threadsafe
+                run_coroutine_threadsafe(
+                    ctx.send_msgs([{"cmd": "Bounce", "tags": ["DeathLink"], "data": message}]),
+                    ctx.loop
+                )
+
+                ctx.last_deathlink_time = current_time
             
     ctx.last_crash_state = is_crashing
 

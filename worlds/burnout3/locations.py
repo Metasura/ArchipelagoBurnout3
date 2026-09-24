@@ -279,3 +279,8 @@ ALL_MEDALS_LIST = [item for item in medals_races_list + medals_crashes_list if i
 ALL_RACE_LIST = [item for item in medals_races_list if item.addr_check is not None]
 ALL_CRASH_LIST = [item for item in medals_crashes_list if item.addr_check is not None]
 ALL_OTHERS_LIST = [item for item in signature_list + headline_list if item.addr_check is not None]
+
+def medal_events_for_type(events, medal_type):
+    if medal_type == 2:
+        return events
+    return [event for event in events if "Face-Off" not in event.name]

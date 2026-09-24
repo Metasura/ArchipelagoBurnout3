@@ -5,7 +5,7 @@ from .b3options import Burnout3Options
 from multiprocessing import Process
 
 from .items import cars_list, races_list, crashes_list
-from .locations import signature_list, headline_list, medals_races_list, medals_crashes_list
+from .locations import signature_list, headline_list, medals_races_list, medals_crashes_list, medal_events_for_type
 
 GAME_NAME = "Burnout 3"
 BASE_ID = 21050000
@@ -228,23 +228,23 @@ class Burnout3World(World):
         elif medal_type_opt == 1: self.medal_suffix = "Silver"
         else: self.medal_suffix = "Gold"
 
-        max_events_in_mode = 173
-        if mode == 1: max_events_in_mode = 73
-        elif mode == 2: max_events_in_mode = 100
+        full_pool = self.get_active_events()
+        medal_pool = medal_events_for_type(
+            [event for event in medals_races_list + medals_crashes_list if event.name in full_pool],
+            medal_type_opt,
+        )
 
-        self.final_gen_count = min(gen_events_count, max_events_in_mode)
+        self.final_gen_count = min(gen_events_count, len(medal_pool))
         self.final_req_count = min(req_medals_count, self.final_gen_count)
 
         if self.final_req_count != req_medals_count or self.final_gen_count != gen_events_count:
             import logging
             logging.info(f"[Burnout 3] Adjusted counts: Generated {self.final_gen_count} (requested {gen_events_count}), Required {self.final_req_count} (requested {req_medals_count})")
 
-        full_pool = self.get_active_events()
-
         if len(full_pool) > self.final_gen_count:
-            self.actual_event_list = self.multiworld.random.sample(full_pool, self.final_gen_count)
+            self.actual_event_list = self.multiworld.random.sample([event.name for event in medal_pool], self.final_gen_count)
         else:
-            self.actual_event_list = full_pool
+            self.actual_event_list = [event.name for event in medal_pool]
         
         self.progression_cars = []
         for car_class, car_list in CARS_BY_CLASS.items():
